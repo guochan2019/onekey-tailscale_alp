@@ -1,45 +1,29 @@
 # onekey-tailscale_alp
 
-一键在 **Alpine Linux LXC** 上安装/卸载 [Tailscale](https://tailscale.com) 并配置 IP 转发，支持 LXC 容器环境。脚本为菜单模式（安装 / 卸载 / 退出）。
+一键在 **Alpine Linux LXC** 上安装/升级/卸载 [Tailscale](https://tailscale.com) 并配置 IP 转发，支持 LXC 容器环境。脚本为菜单模式（安装 / 升级 / 卸载）。
 
-> 功能与 [onekey-tailscale](https://github.com/guochan2019/onekey-tailscale)（Debian 直装版）完全一致，平台层适配 **apk + OpenRC**。
+> 功能与 [onekey-tailscale](https://github.com/guochan2019/onekey-tailscale)（Debian 直装版）完全一致。安装方式为 **官方静态二进制**（不走 Alpine community 包——发行版仓库版本滞后约 4 个小版，如 3.24 stable = 1.98.5 vs 官方 1.102.x）。
 
 ---
 
 ## 快速开始
 
-> ⚠️ 需要 root 权限。适用 Alpine Linux（OpenRC），包管理 apk。
-
-### 方式一：gh CLI（推荐）
+> ⚠️ 需要 root 权限。适用 Alpine Linux（OpenRC）。官方静态二进制无需任何运行时依赖。
 
 ```bash
-gh repo clone guochan2019/onekey-tailscale_alp
-cd onekey-tailscale_alp
-chmod +x onekey-tailscale_alp.sh
-./onekey-tailscale_alp.sh
-```
+# 方式一：一键直达（推荐）
+sh <(wget -qO- https://raw.githubusercontent.com/guochan2019/onekey-tailscale_alp/main/onekey-tailscale_alp.sh)
 
-### 方式二：wget
-
-```bash
-wget -qO- https://raw.githubusercontent.com/guochan2019/onekey-tailscale_alp/main/onekey-tailscale_alp.sh | sh
+# 方式二：gh CLI
+gh repo clone guochan2019/onekey-tailscale_alp && cd onekey-tailscale_alp
+chmod +x onekey-tailscale_alp.sh && ./onekey-tailscale_alp.sh
 ```
 
 ---
 
 ## 部署前置（Alpine LXC）
 
-在 PVE 宿主机创建 Alpine LXC（下载 Alpine 模板后创建，3.20+）：
-
-```bash
-pveam update
-pveam available | grep -i alpine
-pct create <CT_ID> local:vztmpl/alpine-3.2x-default_*.tar.zst \
-  --hostname <name> --memory 512 --net0 name=eth0,bridge=vmbr0,ip=dhcp \
-  --storage local-lvm --unprivileged 1 --features nesting=1
-```
-
-**TUN 设备**（Tailscale 必需）：编辑 `/etc/pve/lxc/<CT_ID>.conf` 添加：
+在 PVE 宿主机创建 Alpine LXC（3.20+）。**TUN 设备**（Tailscale 必需）：编辑 `/etc/pve/lxc/<CT_ID>.conf` 添加：
 
 ```
 lxc.cgroup2.devices.allow: c 10:200 rwm
@@ -56,39 +40,53 @@ lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
 
 ```
 ========================================
-  Tailscale 一键安装/卸载脚本 (Alpine)
+  Tailscale 一键安装/升级/卸载脚本 (Alpine)
 ========================================
 
-[INFO] 检测到 Tailscale 1.x.x 已安装
+[INFO] 检测到 Tailscale 1.102.3 已安装
 
 请选择操作：
-  1. 安装 Tailscale
+  1. 安装 / 升级 Tailscale
   2. 卸载 Tailscale
   0. 退出
 ```
+
+| 选项 | 功能 |
+|------|------|
+| **1** | 未安装 → 4 步完整安装；已安装 → 自动检测官方最新版并升级 |
+| **2** | 卸载：停止服务、删除二进制/状态/转发配置 |
+| **0** | 退出 |
 
 ## 安装流程
 
 | 步骤 | 说明 |
 |------|------|
-| 检测 | 确认 root / 发行版为 Alpine |
-| 1/4 | 启用 community 仓库（tailscale 所在），`apk add tailscale`（自动带 OpenRC 服务） |
-| 2/4 | `rc-update add tailscale default` + 启动服务 |
-| 3/4 | 开启 IPv4/IPv6 转发（写入 `/etc/sysctl.conf`，Alpine 启动加载路径） |
+| 检测 | 确认 root / 发行版 / 架构（amd64 / arm64） |
+| 1/4 | 获取官方最新版本（GitHub API）→ 下载静态二进制 tgz（pkgs.tailscale.com）→ 安装到 `/usr/local/bin` |
+| 2/4 | 创建 OpenRC 服务 `tailscaled`（supervise-daemon 自愈）+ 启动 |
+| 3/4 | 开启 IPv4/IPv6 转发（写入 `/etc/sysctl.conf`） |
 | 4/4 | 验证安装 + TUN 设备检查 |
 
 ---
 
-## 与 Debian 直装版差异
+## 安装方式说明（为什么不用 apk 包）
 
-| 项 | Debian 版 | Alpine 版 |
-|----|-----------|-----------|
-| 包管理 | APT 源 + `apt purge` | community 仓库 + `apk add/del`（自动启用 community） |
-| 服务名 | `tailscaled` | **`tailscale`**（Alpine 包自带 OpenRC 服务名） |
-| 服务管理 | `systemctl` | `rc-service` / `rc-update` |
-| IP 转发 | `/etc/sysctl.d/99-tailscale.conf` | `/etc/sysctl.conf`（写入幂等） |
-| 已知问题修复 | Trixie `/etc/default/tailscaled` 缺失需手动建 | Alpine 包无此问题 |
-| resolv.conf 管理 | systemd-resolved | openresolv（apk 自动拉依赖） |
+| 方案 | 版本 | 说明 |
+|------|------|------|
+| ❌ Alpine community 包 | 滞后（3.24 = 1.98.5） | Tailscale 官方在 Alpine **无独立仓库**，官方 install.sh 也是 apk；版本随 Alpine release 快照，滞后约 4 个小版 |
+| ✅ **官方静态二进制**（本脚本） | 最新（1.102.x） | `pkgs.tailscale.com` tgz，纯静态零依赖，与 daed/frpc 同为二进制管理模式 |
+
+---
+
+## 目录结构
+
+```
+/usr/local/bin/tailscale     # CLI
+/usr/local/bin/tailscaled    # 守护进程 (官方静态)
+/var/lib/tailscale/          # 状态目录 (tailnet 身份, 含登录密钥)
+/etc/init.d/tailscaled       # OpenRC 服务脚本
+/var/log/tailscaled.log      # 运行日志 (supervise-daemon 重定向)
+```
 
 ---
 
@@ -105,8 +103,8 @@ lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
 
 | 清理项 | 说明 |
 |--------|------|
-| tailscale 服务 | 停止并移出 default 运行级（`rc-service stop` + `rc-update del`） |
-| tailscale 包 | `apk del tailscale tailscale-openrc`（不牵连其它包） |
+| tailscaled 服务 | 停止并移出 default 运行级 + 删除 `/etc/init.d/tailscaled` |
+| 二进制 | 删除 `/usr/local/bin/tailscale` + `tailscaled` |
 | 状态数据 | 删除 `/var/lib/tailscale`（含登录密钥） |
 | IP 转发 | 从 `/etc/sysctl.conf` 删除转发行并恢复 `ip_forward=0`（IPv4/IPv6） |
 
@@ -123,9 +121,11 @@ tailscale status                    # 查看网络状态和在线节点
 tailscale ip                        # 查看本机 Tailscale IP
 tailscale ping <host>               # 测试到另一节点的连通性
 tailscale down                      # 断开 Tailscale 网络
-rc-service tailscale restart        # 重启 tailscale 服务
+rc-service tailscaled restart       # 重启 tailscale 服务
 tail -f /var/log/tailscaled.log     # 实时日志
 ```
+
+> 服务由 `supervise-daemon` 托管：进程异常退出自动拉起。与 Debian 版服务名一致（`tailscaled`）。
 
 ---
 
@@ -141,15 +141,15 @@ tailscale up
 
 ---
 
-## 三件套部署顺序（网络基础设施强绑同一 Alpine LXC）
+## 四件套部署顺序（网络基础设施强绑同一 Alpine LXC）
 
-本脚本与 `onekey-mosdns_alp`、`onekey-frpc_alp` 配套，将三个网络基础服务从 Linux Gate（daed 所在机）分离，避免 daed 故障时连带挂机：
+本脚本与 `onekey-init_alp`、`onekey-mosdns_alp`、`onekey-frpc_alp` 配套，将网络基础服务从 Linux Gate（daed 所在机）分离：
 
 ```bash
-# 推荐顺序: tailscale → mosdns → frpc (mosdns 远程上游依赖 tailnet 100.x 可达)
-./onekey-tailscale_alp.sh    # 先装 tailscale 并 tailscale up 登录
-./onekey-mosdns_alp.sh       # 再装 mosdns (remote 上游 = tailnet VPS dnsmasq)
-./onekey-frpc_alp.sh         # 最后装 frpc
+./onekey-init_alp.sh            # ① 系统初始化（换源/工具/调优）
+./onekey-tailscale_alp.sh       # ② tailscale + tailscale up 登录
+./onekey-mosdns_alp.sh          # ③ mosdns (remote 上游 = tailnet VPS dnsmasq)
+./onekey-frpc_alp.sh            # ④ frpc
 ```
 
 三个服务均以 OpenRC 托管、`supervise-daemon` 崩溃自动拉起；各自独立，卸载互不影响。
