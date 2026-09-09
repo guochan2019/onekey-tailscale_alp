@@ -193,6 +193,11 @@ SERVICEEOF
     || echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf
   grep -qxF 'net.ipv6.conf.all.forwarding = 1' /etc/sysctl.conf 2>/dev/null \
     || echo 'net.ipv6.conf.all.forwarding = 1' >> /etc/sysctl.conf
+  # 确保 Alpine 开机自动应用 /etc/sysctl.conf (容器模板默认未启用 sysctl 服务,
+  #   否则容器重启后 ip_forward 回 0, subnet router 转发失效 —— 2026-09-09 实机踩坑)
+  if ! rc-update show 2>/dev/null | grep -q '^ *sysctl '; then
+    rc-update add sysctl boot >/dev/null 2>&1 || warn "  ⚠ rc-update add sysctl boot 失败"
+  fi
   sysctl -w net.ipv4.ip_forward=1 > /dev/null 2>&1
   sysctl -w net.ipv6.conf.all.forwarding=1 > /dev/null 2>&1
   FORWARD=$(cat /proc/sys/net/ipv4/ip_forward)
