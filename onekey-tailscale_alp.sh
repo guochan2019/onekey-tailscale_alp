@@ -194,17 +194,18 @@ SERVICEEOF
   grep -qxF 'net.ipv6.conf.all.forwarding = 1' /etc/sysctl.conf 2>/dev/null \
     || echo 'net.ipv6.conf.all.forwarding = 1' >> /etc/sysctl.conf
   # 确保 Alpine 开机自动应用 /etc/sysctl.conf (容器模板默认未启用 sysctl 服务,
-  #   否则容器重启后 ip_forward 回 0, subnet router 转发失效 —— 2026-09-09 实机踩坑)
+  #   否则容器重启后 IPv4/IPv6 转发回 0, subnet router 转发失效 —— 2026-09-09 实机踩坑)
   if ! rc-update show 2>/dev/null | grep -q '^ *sysctl '; then
     rc-update add sysctl boot >/dev/null 2>&1 || warn "  ⚠ rc-update add sysctl boot 失败"
   fi
   sysctl -w net.ipv4.ip_forward=1 > /dev/null 2>&1
   sysctl -w net.ipv6.conf.all.forwarding=1 > /dev/null 2>&1
   FORWARD=$(cat /proc/sys/net/ipv4/ip_forward)
-  if [ "$FORWARD" = "1" ]; then
-    info "  ✓ IP 转发已开启 (ip_forward = 1)"
+  FORWARD6=$(cat /proc/sys/net/ipv6/conf/all/forwarding 2>/dev/null || echo 0)
+  if [ "$FORWARD" = "1" ] && [ "$FORWARD6" = "1" ]; then
+    info "  ✓ IP 转发已开启 (IPv4=1 IPv6=1)"
   else
-    warn "  ✗ IP 转发状态异常 (ip_forward = ${FORWARD})"
+    warn "  ✗ IP 转发状态异常 (IPv4=${FORWARD} IPv6=${FORWARD6})"
   fi
 
   info "=== 4/4 验证 ==="
