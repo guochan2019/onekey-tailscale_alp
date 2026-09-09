@@ -14,11 +14,10 @@
 # 方式一：一键直达（推荐）
 sh <(wget -qO- https://raw.githubusercontent.com/guochan2019/onekey-tailscale_alp/main/onekey-tailscale_alp.sh)
 
- # 方式二: GitHub 镜像加速(50.1 等直连受限环境用)
-# 方式一：一键直达（推荐）
+# 方式二：GitHub 镜像加速（网关 50.1 等直连受限环境）
 sh <(wget -qO- https://gh-proxy.com/https://raw.githubusercontent.com/guochan2019/onekey-tailscale_alp/main/onekey-tailscale_alp.sh)
 
-# 方式二：gh CLI
+# 方式三：gh CLI
 gh repo clone guochan2019/onekey-tailscale_alp && cd onekey-tailscale_alp
 chmod +x onekey-tailscale_alp.sh && ./onekey-tailscale_alp.sh
 ```
@@ -35,6 +34,8 @@ lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
 ```
 
 添加后重启容器。脚本运行时会自动检查 TUN 设备状态，缺失则打印配置指引。
+
+> ⚠️ **Alpine 容器重启后转发失效（2026-09-09 实机坑）**：容器模板默认**未启用 sysctl 服务**（`/etc/init.d/sysctl` 不在运行级），`/etc/sysctl.conf` 开机不自动应用 → 重启后 ip_forward 回 0，subnet router 转发断（tailscaled 自身仍正常）。本脚本 3/4 已自动 `rc-update add sysctl boot` 修复；老部署手动补：`rc-update add sysctl boot && sysctl -w net.ipv4.ip_forward=1 && sysctl -w net.ipv6.conf.all.forwarding=1`
 
 ---
 
@@ -68,7 +69,7 @@ lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
 | 检测 | 确认 root / 发行版 / 架构（amd64 / arm64） |
 | 1/4 | 获取官方最新版本（GitHub API）→ 下载静态二进制 tgz（pkgs.tailscale.com）→ 安装到 `/usr/local/bin` |
 | 2/4 | 创建 OpenRC 服务 `tailscaled`（supervise-daemon 自愈）+ 启动 |
-| 3/4 | 开启 IPv4/IPv6 转发（写入 `/etc/sysctl.conf`） |
+| 3/4 | 开启 IPv4/IPv6 转发（写入 `/etc/sysctl.conf` + 即时生效） |
 | 4/4 | 验证安装 + TUN 设备检查 |
 
 ---
@@ -150,7 +151,7 @@ tailscale up
 本脚本与 `onekey-init_alp`、`onekey-mosdns_alp`、`onekey-frpc_alp` 配套，将网络基础服务从 Linux Gate（daed 所在机）分离：
 
 ```bash
-./onekey-init_alp.sh            # ① 系统初始化（换源/工具/调优）
+./onekey-init_alp.sh            # ① 系统初始化（换源/工具/时区）
 ./onekey-tailscale_alp.sh       # ② tailscale + tailscale up 登录
 ./onekey-mosdns_alp.sh          # ③ mosdns (remote 上游 = tailnet VPS dnsmasq)
 ./onekey-frpc_alp.sh            # ④ frpc
